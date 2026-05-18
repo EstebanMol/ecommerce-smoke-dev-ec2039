@@ -36,21 +36,30 @@ const PAGINAS = [
 ];
 
 // ─── Helper: extraer precios visibles de la página ──────────────────────────
-async function extraerPrecios(page, selector) {
+  async function extraerPrecios(page, selector) {
   return page.evaluate((sel) => {
     const elementos = document.querySelectorAll(sel);
-    const textos = [];
+    const resultados = [];
 
     elementos.forEach((el) => {
       const texto = el.innerText?.trim() || el.textContent?.trim();
       if (texto && texto.includes('AR$')) {
-        // Tomamos la primera línea (por si el elemento tiene info adicional)
         const primeraLinea = texto.split('\n')[0].trim();
-        if (primeraLinea) textos.push(primeraLinea);
+        if (primeraLinea) {
+          // El <a> envuelve toda la tarjeta, subimos hasta encontrarlo
+          const linkEl = el.closest('a');
+          const url = linkEl
+            ? `https://pipe.store${linkEl.getAttribute('href')}`
+            : 'URL no encontrada';
+
+          resultados.push({ precio: primeraLinea, url });
+        }
       }
     });
 
-    return [...new Set(textos)]; // Deduplicar
+    return resultados.filter((r, i, arr) =>
+      arr.findIndex((x) => x.precio === r.precio && x.url === r.url) === i
+    );
   }, selector);
 }
 
@@ -93,7 +102,7 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
   const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
   expect(response.status(), 'El sitio debe responder con HTTP 200').toBe(200);
 
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(5000);
 
   // 3. Mostrar resultados
   console.log(`Errores de consola detectados: ${erroresConsola.length}`);
@@ -142,7 +151,8 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
 
       console.log(`\n📋 Página: ${pagina.nombre} — ${preciosRaw.length} precios encontrados`);
 
-      const reporte = validarPrecios(preciosRaw);
+      // BIEN - extrae solo el string de precio
+      const reporte = validarPrecios(preciosRaw.map((r) => r.precio));  
 
       // Imprimir detalle en consola para debugging
       reporte.detalle.forEach(({ precio, valid, errores }) => {
@@ -168,7 +178,11 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
             mensaje: `Se encontraron ${reporte.invalidos} precio(s) inválido(s)`,
             detalles: reporte.detalle
               .filter((r) => !r.valid)
-              .map((r) => `${r.precio} → ${r.errores.join(', ')}`),
+              .map((r) => {
+                const match = preciosRaw.find((p) => p.precio === r.precio);
+                const url = match?.url || 'URL no encontrada';
+                return `${r.precio} → ${r.errores.join(', ')}<br>&nbsp;&nbsp;&nbsp;<a href="${url}">${url}</a>`;
+              }),
             screenshotPath: `playwright-report/precios-rotos-${pagina.nombre.toLowerCase()}.png`,
           });
         }
@@ -221,7 +235,8 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
 
     expect(preciosRaw.length, 'Debe haber al menos un precio en la página de detalle').toBeGreaterThan(0);
 
-    const reporte = validarPrecios(preciosRaw);
+    // BIEN - extrae solo el string de precio
+    const reporte = validarPrecios(preciosRaw.map((r) => r.precio));
 
     console.log(`Precios encontrados: ${reporte.total} | Válidos: ${reporte.validos} | Inválidos: ${reporte.invalidos}`);
 
