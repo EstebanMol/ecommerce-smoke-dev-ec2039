@@ -89,40 +89,19 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
     const recursos404 = [];
     const requestsFallidas = [];
 
-    // Captura URLs reales de recursos que fallan
+    // Errores de JavaScript en consola
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') erroresConsola.push(msg.text());
+    });
 
-      page.on('response', (resp) => {
-
-      const status = resp.status();
-      const url = resp.url();
-      const tipo = resp.request().resourceType();
-
-      const recursosFrontend = [
-        'document',
-        'stylesheet',
-        'script',
-        'image',
-        'font'
-      ];
-
-      const es404Visible =
-        status === 404 &&
-        recursosFrontend.includes(tipo);
-
-      if (es404Visible) {
-
-        console.log(
-          `[404][${tipo}] ${url}`
-        );
-
-        recursos404.push({
-          tipo,
-          url
-        });
+    // Recursos que fallan al cargar (404, 500, etc.)
+    page.on('response', (resp) => {
+      if (resp.status() === 404) {
+        recursos404.push(resp.url());
       }
     });
 
-    
+
     // Captura errores JS (sin URLs, el browser no las incluye)
     page.on('console', msg => {
      if (msg.type() === 'error') {
@@ -130,11 +109,12 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
      }
     });
 
+    await page.waitForTimeout(8000);
+
     const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(response.status(), 'El sitio debe responder con HTTP 200').toBe(200);
 
-    await page.waitForTimeout(8000);
-
+   
     // Mostrar 404s CON URL (del listener de response)
     console.log(`\nRecursos con 404: ${recursos404.length}`);
     if (recursos404.length > 0) {
