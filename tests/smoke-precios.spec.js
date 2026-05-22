@@ -83,80 +83,70 @@ async function marcarPreciosRotos(page, selector) {
 test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
 
   //-- Test 1
-    test('El sitio carga sin errores críticos', async ({ page }, testInfo) => {
+   test('El sitio carga sin errores críticos', async ({ page }, testInfo) => {
 
-    const erroresConsola = [];
-    const recursos404 = [];
-    const requestsFallidas = [];
+      const erroresConsola = [];
+      const recursos404 = [];
 
-    // Errores de JavaScript en consola
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') erroresConsola.push(msg.text());
-    });
+      // Listeners ANTES del goto
+      page.on('response', (resp) => {
+        if (resp.status() === 404) {
+          recursos404.push(resp.url());
+        }
+      });
 
-    // Recursos que fallan al cargar (404, 500, etc.)
-    page.on('response', (response) => {
-      if (response.status() === 404) {
-        recursos404.push({
-          url: response.url(),
-          status: response.status(),
+      page.on('console', (msg) => {
+        if (msg.type() === 'error') erroresConsola.push(msg.text());
+      });
+
+      // Navegar
+      const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
+      expect(response.status(), 'El sitio debe responder con HTTP 200').toBe(200);
+
+      // Esperar que carguen todos los recursos
+      await page.waitForTimeout(8000);
+
+      // Mostrar 404s
+      console.log(`\nRecursos con 404: ${recursos404.length}`);
+      if (recursos404.length > 0) {
+        console.log('Detalle de 404s:');
+        recursos404.forEach((url, i) => console.log(`  ${i + 1}. ${url}`));
+      }
+
+      // Mostrar errores JS
+      console.log(`\nErrores JS en consola: ${erroresConsola.length}`);
+      if (erroresConsola.length > 0) {
+        console.log('Detalle:');
+        erroresConsola.forEach((err, i) => console.log(`  ${i + 1}. ${err}`));
+      }
+
+      // Notificar 404s
+      if (recursos404.length > 0 && testInfo.retry === 0) {
+        await notificarError({
+          titulo: `${recursos404.length} recursos con error 404`,
+          mensaje: 'Se detectaron recursos no encontrados en pipe.store',
+          detalles: recursos404.map(url => `<a href="${url}">${url}</a>`),
         });
       }
+
+      // Notificar errores críticos del backend
+      const erroresCriticos = erroresConsola.filter(e =>
+        e.includes('ecommerce-fob-server') ||
+        e.includes('CORS') ||
+        e.includes('ERR_FAILED')
+      );
+
+      if (erroresCriticos.length > 3 && testInfo.retry === 0) {
+        await notificarError({
+          titulo: 'Backend caído o con errores CORS',
+          mensaje: `Se detectaron ${erroresCriticos.length} errores críticos`,
+          detalles: [...new Set(erroresCriticos.map(e => e.split('\n')[0].substring(0, 150)))],
+        });
+
+        throw new Error(`Backend con errores críticos: ${erroresCriticos.length} fallos`);
+      }
+
     });
-
-    await page.waitForTimeout(5000);
-
-
-    const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
-    expect(response.status(), 'El sitio debe responder con HTTP 200').toBe(200);
-
-
-    // Captura errores JS (sin URLs, el browser no las incluye)
-    page.on('console', msg => {
-     if (msg.type() === 'error') {
-       erroresConsola.push(msg.text());
-     }
-    });
-   
-    // Mostrar 404s CON URL (del listener de response)
-    console.log(`\nRecursos con 404: ${recursos404.length}`);
-    if (recursos404.length > 0) {
-      console.log('Detalle de 404s:');
-      recursos404.forEach((url, i) => console.log(`  ${i + 1}. ${url}`));
-    }
-
-    // Mostrar requests fallidas (CORS, ERR_FAILED)
-    console.log(`\nRequests fallidas: ${requestsFallidas.length}`);
-    if (requestsFallidas.length > 0) {
-      console.log('Detalle:');
-      requestsFallidas.forEach((r, i) => console.log(`  ${i + 1}. [${r.error}] ${r.url}`));
-    }
-
-    // Mostrar errores JS (sin URL, limitación del browser)
-    console.log(`\nErrores JS en consola: ${erroresConsola.length}`);
-    if (erroresConsola.length > 0) {
-      console.log('Detalle:');
-      erroresConsola.forEach((err, i) => console.log(`  ${i + 1}. ${err}`));
-    }
-
-    // Fallar si hay errores críticos del backend
-    const erroresCriticos = erroresConsola.filter(e => 
-      e.includes('ecommerce-fob-server') || 
-      e.includes('CORS') ||
-      e.includes('ERR_FAILED')
-    );
-
-    if (erroresCriticos.length > 0 && erroresCriticos.length > 3 && testInfo.retry === 0) {
-      await notificarError({
-        titulo: 'Backend caído o con errores CORS',
-        mensaje: `Se detectaron ${erroresCriticos.length} errores críticos al cargar el sitio`,
-        detalles: [...new Set(erroresCriticos.map(e => e.split('\n')[0].substring(0, 150)))],
-      });
-      
-      throw new Error(`Backend con errores críticos: ${erroresCriticos.length} fallos detectados`);
-    }
-
-  });
 
   // ── Test 2: Validar precios en todas las páginas del catálogo ────────────
   for (const pagina of PAGINAS) {
