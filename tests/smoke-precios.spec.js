@@ -88,13 +88,17 @@ test.describe('🔥 Smoke Test — Validación de precios pipe.store', () => {
       const erroresConsola = [];
       const recursos404 = [];
 
-      // Listeners ANTES del goto
+      // solo 404
       page.on('response', (resp) => {
         if (resp.status() === 404) {
-          recursos404.push(resp.url());
+          // Solo capturar 404s del backend propio, ignorar terceros
+          if (resp.url().includes('phinxlabcore.com')) {
+            recursos404.push(resp.url());
+            console.warn(`⚠️ 404 detectado: ${resp.url()}`);
+          }
         }
       });
-
+      
       page.on('console', (msg) => {
         if (msg.type() === 'error') erroresConsola.push(msg.text());
       });
